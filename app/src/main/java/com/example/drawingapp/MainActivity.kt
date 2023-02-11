@@ -1,13 +1,34 @@
 package com.example.drawingapp
 
+import android.app.AlertDialog
 import android.app.Dialog
-import androidx.appcompat.app.AppCompatActivity
+import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.View
-import android.widget.ImageButton
-import android.widget.SeekBar
-import android.widget.TextView
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import yuku.ambilwarna.AmbilWarnaDialog
+import yuku.ambilwarna.AmbilWarnaDialog.OnAmbilWarnaListener
+import android.Manifest
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Environment
+import android.provider.MediaStore
+import android.widget.*
+import androidx.constraintlayout.widget.ConstraintLayout
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import kotlin.random.Random
+import java.util.*
 
 class MainActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var drawingView: DrawingView
@@ -19,6 +40,34 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var orangeButton: ImageButton
     private lateinit var blueButton: ImageButton
     private lateinit var undoButton: ImageButton
+    private lateinit var colorPickerButton: ImageButton
+    private lateinit var galleryButton: ImageButton
+    private lateinit var saveButton: ImageButton
+
+    private val openGalleryLauncher: ActivityResultLauncher<Intent> =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            findViewById<ImageView>(R.id.gallery_image).setImageURI(result.data?.data)
+        }
+
+    private val requestPermission: ActivityResultLauncher<Array<String>> =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            permissions.entries.forEach {
+                val permissionName = it.key
+                val isGranted = it.value
+
+                if (isGranted && permissionName == Manifest.permission.READ_EXTERNAL_STORAGE) {
+                    Toast.makeText(this, "Permission granted", Toast.LENGTH_SHORT).show()
+                    val pickIntent =
+                        Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                    openGalleryLauncher.launch(pickIntent)
+                } else {
+                    if (permissionName == Manifest.permission.READ_EXTERNAL_STORAGE) {
+                        Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +79,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         orangeButton = findViewById(R.id.orange_button)
         blueButton = findViewById(R.id.blue_button)
         undoButton = findViewById(R.id.undo_button)
+        colorPickerButton = findViewById(R.id.color_picker_button)
+        galleryButton = findViewById(R.id.button_gallery)
+        saveButton = findViewById(R.id.button_save)
 
         drawingView = findViewById(R.id.drawing_view)
         drawingView.changeBurshSize(23.toFloat())
@@ -44,6 +96,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         orangeButton.setOnClickListener(this)
         blueButton.setOnClickListener(this)
         undoButton.setOnClickListener(this)
+        colorPickerButton.setOnClickListener(this)
+        galleryButton.setOnClickListener(this)
+        saveButton.setOnClickListener(this)
 
     }
 
@@ -92,7 +147,117 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             R.id.undo_button -> {
                 drawingView.undoPath()
             }
+            R.id.color_picker_button -> {
+                showColorPickerDialog()
+            }
+            R.id.button_gallery -> {
+                if (ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                    )
+                    != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestStoragePermission()
+                } else {
+                    // get the image
+                    val pickIntent =
+                        Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                    openGalleryLauncher.launch(pickIntent)
+                }
+            }
+            R.id.button_save -> {
+                //save the image
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                  != PackageManager.PERMISSION_GRANTED) {
+                    requestStoragePermission()
+                } else {
+                    val layout = findViewById<ConstraintLayout>(R.id.constraint_l3)
+                    val bitmap = getBitmapFromView(layout)
+
+                    CoroutineScope(IO).launch {
+                        saveImage(bitmap)
+                    }
+                }
+            }
         }
     }
 
+    private fun showColorPickerDialog() {
+        val dialog = AmbilWarnaDialog(this, Color.GREEN, object : OnAmbilWarnaListener {
+            override fun onCancel(dialog: AmbilWarnaDialog?) {
+
+            }
+
+            override fun onOk(dialog: AmbilWarnaDialog?, color: Int) {
+                drawingView.setColor(color)
+            }
+
+        })
+        dialog.show()
+    }
+
+    private fun requestStoragePermission() {
+        if (ActivityCompat.shouldShowRequestPermissionRationale(
+                this,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+        ) {
+            showRationaleDialog()
+        } else {
+            requestPermission.launch(
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE,
+                       Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            )
+        }
+    }
+
+    private fun showRationaleDialog() {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Storage permission")
+            .setMessage("We need this permission in order to access the internal storage")
+            .setPositiveButton(R.string.dialog_yes) { dialog, _ ->
+                requestPermission.launch(
+                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE,
+                           Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                )
+                dialog.dismiss()
+            }
+        builder.create().show()
+    }
+
+    private fun getBitmapFromView(view: View): Bitmap {
+        val bitmap = Bitmap.createBitmap(
+            view.width, view.height,
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        view.draw(canvas)
+        return bitmap
+    }
+
+    private suspend fun saveImage(bitmap: Bitmap) {
+        val root = Environment.getExternalStorageDirectory().toString()
+        val myDir = File("$root/saved_images")
+        myDir.mkdir()
+        val generator = java.util.Random()
+        var n = 10000
+        n = generator.nextInt(n)
+        val outPutFile = File(myDir, "Images-$n.jpg")
+        if (outPutFile.exists()) {
+            outPutFile.delete()
+        } else {
+            try {
+                val out = FileOutputStream(outPutFile)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                out.flush()
+                out.close()
+            } catch (e: Exception) {
+                e.stackTrace
+            }
+
+            withContext(Main) {
+                Toast.makeText(this@MainActivity, "${outPutFile.absolutePath} saved!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 }
