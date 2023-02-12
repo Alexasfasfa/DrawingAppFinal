@@ -27,7 +27,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.random.Random
 import java.util.*
 
 class MainActivity : AppCompatActivity(), View.OnClickListener {
@@ -167,15 +166,26 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             }
             R.id.button_save -> {
                 //save the image
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                  != PackageManager.PERMISSION_GRANTED) {
+                if (ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                    )
+                    != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestStoragePermission()
+                } else if (ActivityCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                    )
+                    != PackageManager.PERMISSION_GRANTED
+                ) {
                     requestStoragePermission()
                 } else {
+                    //save image
                     val layout = findViewById<ConstraintLayout>(R.id.constraint_l3)
-                    val bitmap = getBitmapFromView(layout)
-
                     CoroutineScope(IO).launch {
-                        saveImage(bitmap)
+                        saveImage(getBitmapFromView(layout))
+
                     }
                 }
             }
@@ -205,8 +215,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             showRationaleDialog()
         } else {
             requestPermission.launch(
-                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE,
-                       Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                arrayOf(
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+
+                )
             )
         }
     }
@@ -217,8 +230,10 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             .setMessage("We need this permission in order to access the internal storage")
             .setPositiveButton(R.string.dialog_yes) { dialog, _ ->
                 requestPermission.launch(
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE,
-                           Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    arrayOf(
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    )
                 )
                 dialog.dismiss()
             }
@@ -236,10 +251,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     }
 
     private suspend fun saveImage(bitmap: Bitmap) {
-        val root = Environment.getExternalStorageDirectory().toString()
+        val root =
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString()
         val myDir = File("$root/saved_images")
         myDir.mkdir()
-        val generator = java.util.Random()
+        val generator = Random()
         var n = 10000
         n = generator.nextInt(n)
         val outPutFile = File(myDir, "Images-$n.jpg")
@@ -256,7 +272,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             }
 
             withContext(Main) {
-                Toast.makeText(this@MainActivity, "${outPutFile.absolutePath} saved!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@MainActivity,
+                    "${outPutFile.absolutePath} saved!",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
