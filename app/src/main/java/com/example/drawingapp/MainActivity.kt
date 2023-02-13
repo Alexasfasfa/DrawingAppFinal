@@ -20,6 +20,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.*
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
@@ -54,14 +55,25 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 val permissionName = it.key
                 val isGranted = it.value
 
-                if (isGranted && permissionName == Manifest.permission.READ_EXTERNAL_STORAGE) {
-                    Toast.makeText(this, "Permission granted", Toast.LENGTH_SHORT).show()
+                if (isGranted && (permissionName == Manifest.permission.READ_EXTERNAL_STORAGE)) {
+                    Toast.makeText(this, "Permission $permissionName granted", Toast.LENGTH_LONG)
+                        .show()
                     val pickIntent =
                         Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
                     openGalleryLauncher.launch(pickIntent)
+                } else if (isGranted && (permissionName == Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                    Toast.makeText(this, "Permission $permissionName granted", Toast.LENGTH_LONG)
+                        .show()
+                    CoroutineScope(IO).launch {
+                        saveImage(getBitmapFromView(findViewById(R.id.constraint_l3)))
+                    }
                 } else {
-                    if (permissionName == Manifest.permission.READ_EXTERNAL_STORAGE) {
-                        Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
+                    if (permissionName == Manifest.permission.READ_EXTERNAL_STORAGE || permissionName == Manifest.permission.WRITE_EXTERNAL_STORAGE) {
+                        Toast.makeText(
+                            this,
+                            "Permission $permissionName denied",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
             }
@@ -168,24 +180,16 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 //save the image
                 if (ActivityCompat.checkSelfPermission(
                         this,
-                        Manifest.permission.READ_EXTERNAL_STORAGE
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
                     )
                     != PackageManager.PERMISSION_GRANTED
                 ) {
-                    requestStoragePermission()
-                } else if (ActivityCompat.checkSelfPermission(
-                        this,
-                        Manifest.permission.READ_EXTERNAL_STORAGE
-                    )
-                    != PackageManager.PERMISSION_GRANTED
-                ) {
+                    Toast.makeText(this, "IF called", Toast.LENGTH_SHORT).show()
                     requestStoragePermission()
                 } else {
-                    //save image
                     val layout = findViewById<ConstraintLayout>(R.id.constraint_l3)
                     CoroutineScope(IO).launch {
                         saveImage(getBitmapFromView(layout))
-
                     }
                 }
             }
@@ -213,12 +217,17 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             )
         ) {
             showRationaleDialog()
+        } else if (ActivityCompat.shouldShowRequestPermissionRationale(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+        ) {
+            showRationaleDialog()
         } else {
             requestPermission.launch(
                 arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                    Manifest.permission.READ_EXTERNAL_STORAGE
-
                 )
             )
         }
@@ -253,6 +262,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private suspend fun saveImage(bitmap: Bitmap) {
         val root =
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES).toString()
+                .toString()
         val myDir = File("$root/saved_images")
         myDir.mkdir()
         val generator = Random()
